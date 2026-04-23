@@ -3,73 +3,95 @@ version: '3.8'
 # ============================================================
 # RUNTIME PHASE - Locked down multi-agent setup
 # MiniMax Token Plan (Claude, OpenClaw) + GLM Coding Plan (Hermes)
-# Paperclip is BUILT FROM SOURCE (no pre-built image on Docker Hub)
+# Based on: https://github.com/MadeByAdem/paperclipai-docker
 # ============================================================
 
 services:
-  # -----------------------------------------
-  # Paperclip Hub - Central orchestration
-  # Built from GitHub source on deploy
-  # -----------------------------------------
+  # ── PostgreSQL 17 ─────────────────────────────────────
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: paperclip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: paperclip
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperclip -d paperclip"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Hardening
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+    networks:
+      - agent-net
+
+  # ── Paperclip Hub ─────────────────────────────────────────
   paperclip:
     build:
-      context: https://github.com/paperclipai/paperclip.git#master
+      context: .
       dockerfile: Dockerfile
     container_name: paperclip-hub
     restart: unless-stopped
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     environment:
-      - DATABASE_URL=postgresql://paperclip:paperclip@db:5432/paperclip
-      - PORT=3100
-      - BETTER_AUTH_SECRET=${PAPERCLIP_SECRET:-change-me-in-production}
-      - AUTH_MODE=authenticated
-      - NODE_ENV=production
-      - LOG_LEVEL=info
+      DATABASE_URL: postgres://paperclip:${POSTGRES_PASSWORD}@db:5432/paperclip
+      PORT: "3100"
+      HOST: "0.0.0.0"
+      SERVE_UI: "true"
+      NODE_ENV: production
+      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
+      PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?Generate with: openssl rand -hex 32}"
+      # API keys for AI agents (optional)
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      # MiniMax Token Plan (Claude + OpenClaw)
+      MINIMAX_ANTHROPIC_URL: "${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}"
+      MINIMAX_API_KEY: "${MINIMAX_API_KEY:-}"
+      MINIMAX_MODEL: "${MINIMAX_MODEL:-MiniMax-M2.7}"
+      # GLM Coding Plan (Hermes)
+      GLM_ANTHROPIC_URL: "${GLM_ANTHROPIC_URL:-https://api.z.ai/api/anthropic}"
+      GLM_API_KEY: "${GLM_API_KEY:-}"
+      GLM_MODEL: "${GLM_MODEL:-GLM-4.7}"
     volumes:
       - paperclip-config:/paperclip
       - workspace:/workspace:rw
-      - audit-logs:/var/log/paperclip
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - agent-net
+    # Hardening
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 4096
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=1g
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:3100/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 4G
-
-  # -----------------------------------------
-  # PostgreSQL Database for Paperclip
-  # -----------------------------------------
-  db:
-    image: postgres:17-alpine
-    container_name: paperclip-db
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=paperclip
-      - POSTGRES_PASSWORD=paperclip
-      - POSTGRES_DB=paperclip
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+      start_period: 60s
     networks:
       - agent-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U paperclip"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # -----------------------------------------
-  # Claude Agent - MiniMax Token Plan
-  # -----------------------------------------
+  # ── Claude Agent ─────────────────────────────────────────
   claude-agent:
     image: node:22-alpine
     container_name: claude-agent
@@ -79,9 +101,7 @@ services:
     volumes:
       - agent-configs:/root:ro
       - workspace:/workspace:rw
-      - audit-logs:/logs:ro
     environment:
-      # MiniMax Token Plan
       - ANTHROPIC_BASE_URL=${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}
       - ANTHROPIC_AUTH_TOKEN=${MINIMAX_API_KEY}
       - API_TIMEOUT_MS=3000000
@@ -107,9 +127,7 @@ services:
           cpus: '1.5'
           memory: 3G
 
-  # -----------------------------------------
-  # Hermes Agent - GLM Coding Plan (Z.AI)
-  # -----------------------------------------
+  # ── Hermes Agent ─────────────────────────────────────────
   hermes-agent:
     image: node:22-alpine
     container_name: hermes-agent
@@ -119,9 +137,7 @@ services:
     volumes:
       - agent-configs:/root:ro
       - workspace:/workspace:rw
-      - audit-logs:/logs:ro
     environment:
-      # GLM Coding Plan (Z.AI)
       - ANTHROPIC_BASE_URL=${GLM_ANTHROPIC_URL:-https://api.z.ai/api/anthropic}
       - ANTHROPIC_AUTH_TOKEN=${GLM_API_KEY}
       - API_TIMEOUT_MS=3000000
@@ -146,9 +162,7 @@ services:
           cpus: '1'
           memory: 2G
 
-  # -----------------------------------------
-  # OpenClaw Agent - MiniMax Token Plan
-  # -----------------------------------------
+  # ── OpenClaw Agent ───────────────────────────────────────
   openclaw-agent:
     image: node:22-alpine
     container_name: openclaw-agent
@@ -158,9 +172,7 @@ services:
     volumes:
       - agent-configs:/root:ro
       - workspace:/workspace:rw
-      - audit-logs:/logs:ro
     environment:
-      # MiniMax Token Plan
       - ANTHROPIC_BASE_URL=${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}
       - ANTHROPIC_AUTH_TOKEN=${MINIMAX_API_KEY}
       - API_TIMEOUT_MS=3000000
@@ -190,14 +202,9 @@ volumes:
     driver: local
   workspace:
     driver: local
-  audit-logs:
-    driver: local
   pgdata:
     driver: local
 
 networks:
   agent-net:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 10.20.0.0/24
