@@ -1,12 +1,9 @@
 # =============================================================================
 # Paperclip Multi-Agent - All-in-One Docker Build
 # =============================================================================
-# Includes:
-#   - Paperclip Server (hub/orchestrator)
-#   - Claude Code (MiniMax Token Plan)
-#   - Hermes Agent (GLM Coding Plan)
-#   - OpenClaw (MiniMax Token Plan)
-#   - Plus: Codex, opencode-ai, GitHub CLI, ripgrep, Python3
+# Installs ALL agents. Provider/model configuration is handled via
+# Paperclip UI (not hardcoded here). This allows switching between
+# MiniMax Token Plan and GLM Coding Plan per agent.
 # =============================================================================
 
 # --- Stage 1: Base image with system dependencies ---
@@ -68,27 +65,34 @@ ARG USER_GID=1000
 WORKDIR /app
 COPY --chown=node:node --from=build /app /app
 
-# Install global AI agent CLI tools (original Paperclip)
-RUN npm install --global --omit=dev \
-    @anthropic-ai/claude-code@latest \
-    @openai/codex@latest \
-    opencode-ai \
-  && mkdir -p /paperclip \
-  && chown node:node /paperclip
+# Install Claude Code (provider configured via Paperclip UI)
+RUN npm install --global @anthropic-ai/claude-code@latest
 
-# ===== INSTALL OPENCLAW =====
+# Install OpenAI Codex (optional)
+RUN npm install --global @openai/codex@latest
+
+# Install Opencode AI (optional)
+RUN npm install --global opencode-ai
+
+# Install OpenClaw
 RUN npm install -g pnpm && \
     curl -fsSL https://openclaw.ai/install.sh | bash || \
     npm install -g openclaw@latest
 
-# ===== INSTALL HERMES AGENT =====
+# Install Hermes Agent
 RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
 
-# Copy entrypoint and startup scripts
+# Setup Claude Code template config (Paperclip UI will override with real credentials)
+RUN mkdir -p /root/.claude && \
+    echo '{"env":{}}' > /root/.claude/settings.json && \
+    chmod 600 /root/.claude/settings.json
+
+# Create workspace directory
+RUN mkdir -p /workspace && chown node:node /workspace
+
+# Copy entrypoint
 COPY docker-entrypoint.sh /usr/local/bin/
-COPY start-agents.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
-             /usr/local/bin/start-agents.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production \
   HOME=/paperclip \
