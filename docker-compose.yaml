@@ -46,10 +46,10 @@ services:
     container_name: paperclip-hub
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3100:3100"
+      - "127.0.0.1:3100:3001"
     environment:
       DATABASE_URL: postgres://paperclip:${POSTGRES_PASSWORD}@db:5432/paperclip
-      PORT: "3100"
+      PORT: "3001"
       HOST: "0.0.0.0"
       SERVE_UI: "true"
       NODE_ENV: production
