@@ -1,6 +1,12 @@
 # =============================================================================
-# Paperclip - Multi-stage Docker build
-# Builds from source: https://github.com/paperclipai/paperclip
+# Paperclip Multi-Agent - All-in-One Docker Build
+# =============================================================================
+# Includes:
+#   - Paperclip Server (hub/orchestrator)
+#   - Claude Code (MiniMax Token Plan)
+#   - Hermes Agent (GLM Coding Plan)
+#   - OpenClaw (MiniMax Token Plan)
+#   - Plus: Codex, opencode-ai, GitHub CLI, ripgrep, Python3
 # =============================================================================
 
 # --- Stage 1: Base image with system dependencies ---
@@ -18,6 +24,7 @@ RUN apt-get update \
     wget \
     ripgrep \
     python3 \
+    python3-pip \
   # Install GitHub CLI
   && mkdir -p -m 755 /etc/apt/keyrings \
   && wget -nv -O/etc/apt/keyrings/githubcli-archive-keyring.gpg \
@@ -36,7 +43,7 @@ RUN usermod -u $USER_UID --non-unique node \
   && groupmod -g $USER_GID --non-unique node \
   && usermod -g $USER_GID -d /paperclip node
 
-# --- Stage 2: Clone repo and install dependencies ---
+# --- Stage 2: Clone Paperclip repo and install dependencies ---
 FROM base AS deps
 WORKDIR /app
 
@@ -52,7 +59,7 @@ RUN pnpm --filter @paperclipai/ui build \
   && pnpm --filter @paperclipai/server build \
   && test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
-# --- Stage 4: Production image ---
+# --- Stage 4: Production image with ALL agents ---
 FROM base AS production
 
 ARG USER_UID=1000
@@ -61,7 +68,7 @@ ARG USER_GID=1000
 WORKDIR /app
 COPY --chown=node:node --from=build /app /app
 
-# Install global AI agent CLI tools
+# Install global AI agent CLI tools (original Paperclip)
 RUN npm install --global --omit=dev \
     @anthropic-ai/claude-code@latest \
     @openai/codex@latest \
@@ -69,8 +76,19 @@ RUN npm install --global --omit=dev \
   && mkdir -p /paperclip \
   && chown node:node /paperclip
 
+# ===== INSTALL OPENCLAW =====
+RUN npm install -g pnpm && \
+    curl -fsSL https://openclaw.ai/install.sh | bash || \
+    npm install -g openclaw@latest
+
+# ===== INSTALL HERMES AGENT =====
+RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+
+# Copy entrypoint and startup scripts
 COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY start-agents.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+             /usr/local/bin/start-agents.sh
 
 ENV NODE_ENV=production \
   HOME=/paperclip \
@@ -86,8 +104,9 @@ ENV NODE_ENV=production \
   PAPERCLIP_DEPLOYMENT_EXPOSURE=private \
   OPENCODE_ALLOW_ALL_MODELS=true
 
-VOLUME ["/paperclip"]
+VOLUME ["/paperclip", "/workspace"]
 EXPOSE 3100
 
+# Default: run Paperclip server
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "--import", "./server/node_modules/tsx/dist/loader.mjs", "server/dist/index.js"]

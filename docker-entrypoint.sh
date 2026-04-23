@@ -20,7 +20,8 @@ if [ "$(id -g node)" -ne "$PGID" ]; then
     changed=1
 fi
 
-# Always ensure /paperclip is owned by node (first run or after UID/GID change)
+# Always ensure /paperclip and /workspace are owned by node
 chown -R node:node /paperclip
+chown -R node:node /workspace
 
 exec gosu node "$@"
