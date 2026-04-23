@@ -79,12 +79,10 @@ RUN npm install -g pnpm && \
     curl -fsSL https://openclaw.ai/install.sh | bash || \
     npm install -g openclaw@latest
 
-# Install Hermes Agent
-RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
-
-# Setup Claude Code template config (Paperclip UI will override with real credentials)
+# Setup Claude Code template config for Z.AI (GLM Coding Plan)
+# Credentials injected at runtime via environment variables
 RUN mkdir -p /root/.claude && \
-    echo '{"env":{}}' > /root/.claude/settings.json && \
+    echo '{"env":{"ANTHROPIC_AUTH_TOKEN":"","ANTHROPIC_BASE_URL":"https://api.z.ai/api/anthropic","API_TIMEOUT_MS":"3000000"}}' > /root/.claude/settings.json && \
     chmod 600 /root/.claude/settings.json
 
 # Create workspace directory

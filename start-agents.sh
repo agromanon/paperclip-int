@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Start all agents with correct token plan configuration
+# Start agents with token plan configuration
 # =============================================================================
 
 set -e
@@ -23,7 +23,7 @@ mkdir -p /workspace
 echo ""
 echo "Starting agents with token plan configuration:"
 echo "  - Claude/OpenClaw: MiniMax (${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic})"
-echo "  - Hermes: GLM (${GLM_ANTHROPIC_URL:-https://api.z.ai/api/anthropic})"
+echo "  - Claude (Z.AI): GLM Coding Plan (${GLM_ANTHROPIC_URL:-https://api.z.ai/api/anthropic})"
 echo ""
 
 # Function to start an agent in background
@@ -36,10 +36,7 @@ start_agent() {
 }
 
 # Start Claude Code (MiniMax Token Plan)
-start_agent "Claude Agent" "claude-code start --workspace /workspace --non-interactive"
-
-# Start Hermes (GLM Coding Plan)
-start_agent "Hermes Agent" "hermes start --workspace /workspace --daemon"
+start_agent "Claude Agent (MiniMax)" "claude-code start --workspace /workspace --non-interactive"
 
 # Start OpenClaw (MiniMax Token Plan)
 start_agent "OpenClaw Agent" "openclaw agent start --workspace /workspace"
@@ -47,7 +44,7 @@ start_agent "OpenClaw Agent" "openclaw agent start --workspace /workspace"
 echo ""
 echo "All agents started. Use 'docker logs' to view agent output."
 echo "Agent processes:"
-pgrep -a -f "claude-code|hermes|openclaw" || echo "  (no agents running yet)"
+pgrep -a -f "claude-code|openclaw" || echo "  (no agents running yet)"
 
 # Keep container running
 echo ""

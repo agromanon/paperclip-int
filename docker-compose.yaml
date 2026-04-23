@@ -61,7 +61,7 @@ services:
       MINIMAX_ANTHROPIC_URL: "${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}"
       MINIMAX_API_KEY: "${MINIMAX_API_KEY:-}"
       MINIMAX_MODEL: "${MINIMAX_MODEL:-MiniMax-M2.7}"
-      # GLM Coding Plan (Hermes)
+      # GLM Coding Plan (Z.AI)
       GLM_ANTHROPIC_URL: "${GLM_ANTHROPIC_URL:-https://api.z.ai/api/anthropic}"
       GLM_API_KEY: "${GLM_API_KEY:-}"
       GLM_MODEL: "${GLM_MODEL:-GLM-4.7}"
