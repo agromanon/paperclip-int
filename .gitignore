@@ -1,0 +1,26 @@
+# Environment files (contain API keys!)
+.env
+.env.local
+.env.*.local
+
+# Backups
+backups/
+*.tar.gz
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/
+
+# Coolify specific
+*.local.yaml

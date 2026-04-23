@@ -1,0 +1,178 @@
+version: '3.8'
+
+# ============================================================
+# RUNTIME PHASE - Locked down multi-agent setup
+# MiniMax Token Plan (Claude, OpenClaw) + GLM Coding Plan (Hermes)
+# ============================================================
+
+services:
+  # -----------------------------------------
+  # Paperclip Hub - Central orchestration
+  # -----------------------------------------
+  paperclip:
+    image: paperclipai/paperclip:latest
+    container_name: paperclip-hub
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - paperclip-config:/app/paperclip-data:ro
+      - workspace:/workspace:rw
+      - audit-logs:/var/log/paperclip
+    environment:
+      - LOG_LEVEL=info
+      - NODE_ENV=production
+    networks:
+      - agent-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # -----------------------------------------
+  # Claude Agent - MiniMax Token Plan
+  # -----------------------------------------
+  claude-agent:
+    image: node:22-alpine
+    container_name: claude-agent
+    restart: unless-stopped
+    read_only: true
+    user: "1000:1000"
+    volumes:
+      - agent-configs:/root:ro
+      - workspace:/workspace:rw
+      - audit-logs:/logs:ro
+    environment:
+      # MiniMax Token Plan
+      - ANTHROPIC_BASE_URL=${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}
+      - ANTHROPIC_AUTH_TOKEN=${MINIMAX_API_KEY}
+      - API_TIMEOUT_MS=3000000
+      - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+      - ANTHROPIC_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
+      - ANTHROPIC_DEFAULT_SONNET_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
+      - ANTHROPIC_DEFAULT_OPUS_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
+      - ANTHROPIC_DEFAULT_HAIKU_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
+      # Paths
+      - HOME=/root
+      - PATH=/usr/local/bin:/usr/bin:/bin:/workspace/bin
+      - CLAUDE_WORKSPACE=/workspace
+    entrypoint: ["ash", "-c", "
+      chmod 755 /workspace 2>/dev/null || true
+      claude-code start --workspace /workspace --non-interactive
+    "]
+    networks:
+      - agent-net
+    dns:
+      - 127.0.0.1
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 3G
+    depends_on:
+      - paperclip
+
+  # -----------------------------------------
+  # Hermes Agent - GLM Coding Plan (Z.AI)
+  # -----------------------------------------
+  hermes-agent:
+    image: node:22-alpine
+    container_name: hermes-agent
+    restart: unless-stopped
+    read_only: true
+    user: "1001:1001"
+    volumes:
+      - agent-configs:/root:ro
+      - workspace:/workspace:rw
+      - audit-logs:/logs:ro
+    environment:
+      # GLM Coding Plan (Z.AI)
+      - ANTHROPIC_BASE_URL=${GLM_ANTHROPIC_URL:-https://api.z.ai/api/anthropic}
+      - ANTHROPIC_AUTH_TOKEN=${GLM_API_KEY}
+      - API_TIMEOUT_MS=3000000
+      - ANTHROPIC_MODEL=${GLM_MODEL:-GLM-4.7}
+      - ANTHROPIC_DEFAULT_OPUS_MODEL=${GLM_MODEL:-GLM-4.7}
+      - ANTHROPIC_DEFAULT_SONNET_MODEL=${GLM_MODEL:-GLM-4.7}
+      - ANTHROPIC_DEFAULT_HAIKU_MODEL=GLM-4.5-Air
+      # Paths
+      - HOME=/root
+      - PATH=/usr/local/bin:/usr/bin:/bin
+      - CLAUDE_WORKSPACE=/workspace
+    entrypoint: ["ash", "-c", "
+      chmod 755 /workspace 2>/dev/null || true
+      hermes start --workspace /workspace --daemon
+    "]
+    networks:
+      - agent-net
+    dns:
+      - 127.0.0.1
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+    depends_on:
+      - paperclip
+
+  # -----------------------------------------
+  # OpenClaw Agent - MiniMax Token Plan
+  # -----------------------------------------
+  openclaw-agent:
+    image: node:22-alpine
+    container_name: openclaw-agent
+    restart: unless-stopped
+    read_only: true
+    user: "1002:1002"
+    volumes:
+      - agent-configs:/root:ro
+      - workspace:/workspace:rw
+      - audit-logs:/logs:ro
+    environment:
+      # MiniMax Token Plan (same as Claude)
+      - ANTHROPIC_BASE_URL=${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}
+      - ANTHROPIC_AUTH_TOKEN=${MINIMAX_API_KEY}
+      - API_TIMEOUT_MS=3000000
+      - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+      - ANTHROPIC_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
+      # Paths
+      - HOME=/root
+      - PATH=/usr/local/bin:/usr/bin:/bin
+      - CLAUDE_WORKSPACE=/workspace
+    entrypoint: ["ash", "-c", "
+      chmod 755 /workspace 2>/dev/null || true
+      openclaw agent start --workspace /workspace
+    "]
+    networks:
+      - agent-net
+    dns:
+      - 127.0.0.1
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+    depends_on:
+      - paperclip
+
+volumes:
+  paperclip-config:
+    driver: local
+  agent-configs:
+    driver: local
+  workspace:
+    driver: local
+  audit-logs:
+    driver: local
+
+networks:
+  agent-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24

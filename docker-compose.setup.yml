@@ -1,0 +1,112 @@
+version: '3.8'
+
+# ============================================================
+# SETUP PHASE - Run once to configure all agents
+# MiniMax Token Plan (Claude, OpenClaw) + GLM Coding Plan (Hermes)
+# Usage: docker-compose -f docker-compose.setup.yml run setup-paperclip
+# ============================================================
+
+services:
+  # -----------------------------------------
+  # Paperclip Setup - Interactive onboarding
+  # -----------------------------------------
+  setup-paperclip:
+    image: paperclipai/paperclip
+    container_name: paperclip-setup
+    volumes:
+      - paperclip-config:/app/paperclip-data
+      - ./logs:/logs
+    environment:
+      - LOG_LEVEL=info
+    entrypoint: ["npx", "paperclipai", "onboard"]
+    stdin_open: true
+    tty: true
+    networks:
+      - agent-net
+
+  # -----------------------------------------
+  # Claude Agent Setup - MiniMax token plan
+  # -----------------------------------------
+  setup-claude:
+    image: node:22-alpine
+    container_name: claude-setup
+    volumes:
+      - agent-configs:/root
+      - ./logs:/logs
+    environment:
+      - HOME=/root
+      # MiniMax Token Plan
+      - ANTHROPIC_BASE_URL=${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}
+      - ANTHROPIC_AUTH_TOKEN=${MINIMAX_API_KEY}
+      - API_TIMEOUT_MS=3000000
+      - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+      - ANTHROPIC_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
+    entrypoint: ["ash", "-c", "
+      apk add --no-cache git curl bash &&
+      npm install -g @anthropic-ai/claude-code &&
+      exec claude desk
+    "]
+    stdin_open: true
+    tty: true
+    networks:
+      - agent-net
+
+  # -----------------------------------------
+  # Hermes Agent Setup - GLM Coding Plan (Z.AI)
+  # -----------------------------------------
+  setup-hermes:
+    image: node:22-alpine
+    container_name: hermes-setup
+    volumes:
+      - agent-configs:/root
+      - ./logs:/logs
+    environment:
+      - HOME=/root
+      # GLM Coding Plan (Z.AI)
+      - ANTHROPIC_BASE_URL=${GLM_ANTHROPIC_URL:-https://api.z.ai/api/anthropic}
+      - ANTHROPIC_AUTH_TOKEN=${GLM_API_KEY}
+      - API_TIMEOUT_MS=3000000
+    entrypoint: ["ash", "-c", "
+      apk add --no-cache git curl bash &&
+      curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash &&
+      exec hermes setup
+    "]
+    stdin_open: true
+    tty: true
+    networks:
+      - agent-net
+
+  # -----------------------------------------
+  # OpenClaw Agent Setup - MiniMax token plan
+  # -----------------------------------------
+  setup-openclaw:
+    image: node:22-alpine
+    container_name: openclaw-setup
+    volumes:
+      - agent-configs:/root
+      - ./logs:/logs
+    environment:
+      - HOME=/root
+      # MiniMax Token Plan
+      - ANTHROPIC_BASE_URL=${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}
+      - ANTHROPIC_AUTH_TOKEN=${MINIMAX_API_KEY}
+    entrypoint: ["ash", "-c", "
+      apk add --no-cache git curl bash python3 make g++
+      npm install -g pnpm &&
+      curl -fsSL https://openclaw.ai/install.sh | bash &&
+      exec openclaw onboard --no-onboard
+    "]
+    stdin_open: true
+    tty: true
+    networks:
+      - agent-net
+
+volumes:
+  paperclip-config:
+    driver: local
+  agent-configs:
+    driver: local
+
+networks:
+  agent-net:
+    driver: bridge
