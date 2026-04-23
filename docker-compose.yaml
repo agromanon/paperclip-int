@@ -13,7 +13,7 @@ services:
   # -----------------------------------------
   paperclip:
     build:
-      context: https://github.com/paperclipai/paperclip.git#main
+      context: https://github.com/paperclipai/paperclip.git#master
       dockerfile: Dockerfile
     container_name: paperclip-hub
     restart: unless-stopped
