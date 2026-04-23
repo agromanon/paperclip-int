@@ -23,6 +23,10 @@ fi
 # Always ensure /paperclip and /workspace are owned by node
 chown -R node:node /paperclip
 chown -R node:node /workspace
+chmod -R 755 /paperclip
+# Ensure critical subdirectories exist with correct permissions
+mkdir -p /paperclip/instances/default/data/run-logs
+chown -R node:node /paperclip/instances/default/data/run-logs
 
 # Inject GLM API key into Claude Code settings for Z.AI (GLM Coding Plan)
 if [ -n "$GLM_API_KEY" ] && [ -d "/root/.claude" ]; then
