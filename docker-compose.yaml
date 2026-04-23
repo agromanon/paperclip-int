@@ -3,25 +3,36 @@ version: '3.8'
 # ============================================================
 # RUNTIME PHASE - Locked down multi-agent setup
 # MiniMax Token Plan (Claude, OpenClaw) + GLM Coding Plan (Hermes)
+# Paperclip is BUILT FROM SOURCE (no pre-built image on Docker Hub)
 # ============================================================
 
 services:
   # -----------------------------------------
   # Paperclip Hub - Central orchestration
+  # Built from GitHub source on deploy
   # -----------------------------------------
   paperclip:
-    image: paperclipai/paperclip:latest
+    build:
+      context: https://github.com/paperclipai/paperclip.git#main
+      dockerfile: Dockerfile
     container_name: paperclip-hub
     restart: unless-stopped
     ports:
       - "3100:3100"
+    environment:
+      - DATABASE_URL=postgresql://paperclip:paperclip@db:5432/paperclip
+      - PORT=3100
+      - BETTER_AUTH_SECRET=${PAPERCLIP_SECRET:-change-me-in-production}
+      - AUTH_MODE=authenticated
+      - NODE_ENV=production
+      - LOG_LEVEL=info
     volumes:
-      - paperclip-config:/app/paperclip-data:ro
+      - paperclip-config:/paperclip
       - workspace:/workspace:rw
       - audit-logs:/var/log/paperclip
-    environment:
-      - LOG_LEVEL=info
-      - NODE_ENV=production
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - agent-net
     healthcheck:
@@ -34,6 +45,27 @@ services:
         limits:
           cpus: '2'
           memory: 4G
+
+  # -----------------------------------------
+  # PostgreSQL Database for Paperclip
+  # -----------------------------------------
+  db:
+    image: postgres:17-alpine
+    container_name: paperclip-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=paperclip
+      - POSTGRES_PASSWORD=paperclip
+      - POSTGRES_DB=paperclip
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - agent-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperclip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # -----------------------------------------
   # Claude Agent - MiniMax Token Plan
@@ -58,7 +90,6 @@ services:
       - ANTHROPIC_DEFAULT_SONNET_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
       - ANTHROPIC_DEFAULT_OPUS_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
       - ANTHROPIC_DEFAULT_HAIKU_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
-      # Paths
       - HOME=/root
       - PATH=/usr/local/bin:/usr/bin:/bin:/workspace/bin
       - CLAUDE_WORKSPACE=/workspace
@@ -75,8 +106,6 @@ services:
         limits:
           cpus: '1.5'
           memory: 3G
-    depends_on:
-      - paperclip
 
   # -----------------------------------------
   # Hermes Agent - GLM Coding Plan (Z.AI)
@@ -100,7 +129,6 @@ services:
       - ANTHROPIC_DEFAULT_OPUS_MODEL=${GLM_MODEL:-GLM-4.7}
       - ANTHROPIC_DEFAULT_SONNET_MODEL=${GLM_MODEL:-GLM-4.7}
       - ANTHROPIC_DEFAULT_HAIKU_MODEL=GLM-4.5-Air
-      # Paths
       - HOME=/root
       - PATH=/usr/local/bin:/usr/bin:/bin
       - CLAUDE_WORKSPACE=/workspace
@@ -117,8 +145,6 @@ services:
         limits:
           cpus: '1'
           memory: 2G
-    depends_on:
-      - paperclip
 
   # -----------------------------------------
   # OpenClaw Agent - MiniMax Token Plan
@@ -134,13 +160,12 @@ services:
       - workspace:/workspace:rw
       - audit-logs:/logs:ro
     environment:
-      # MiniMax Token Plan (same as Claude)
+      # MiniMax Token Plan
       - ANTHROPIC_BASE_URL=${MINIMAX_ANTHROPIC_URL:-https://api.minimax.io/anthropic}
       - ANTHROPIC_AUTH_TOKEN=${MINIMAX_API_KEY}
       - API_TIMEOUT_MS=3000000
       - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
       - ANTHROPIC_MODEL=${MINIMAX_MODEL:-MiniMax-M2.7}
-      # Paths
       - HOME=/root
       - PATH=/usr/local/bin:/usr/bin:/bin
       - CLAUDE_WORKSPACE=/workspace
@@ -157,8 +182,6 @@ services:
         limits:
           cpus: '1'
           memory: 2G
-    depends_on:
-      - paperclip
 
 volumes:
   paperclip-config:
@@ -168,6 +191,8 @@ volumes:
   workspace:
     driver: local
   audit-logs:
+    driver: local
+  pgdata:
     driver: local
 
 networks:
